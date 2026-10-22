@@ -519,11 +519,21 @@ def model_ko_name(model_id: str) -> str:
     return name
 
 
+GROUP_ORDER = ["클로드", "GPT", "제미나이", "그록", "딥시크", "라마", "큐웬", "미스트랄", "키미"]
+GROUP_KO = {"anthropic": "클로드", "openai": "GPT", "google": "제미나이", "x-ai": "그록", "deepseek": "딥시크",
+            "meta-llama": "라마", "qwen": "큐웬", "mistralai": "미스트랄", "moonshotai": "키미"}
+
+
+def model_group(model_id: str) -> str:
+    prov = model_id.split("/")[0]
+    return GROUP_KO.get(prov, "기타(" + prov + ")")
+
+
 def model_label(m):
     ko = model_ko_name(m["id"])
     if m["in"] is None:
-        return f"{ko} · {m['id']}"
-    return f"{ko} · {m['id']} · 100만 토큰당 입력 ${m['in']:.2f} / 출력 ${m['out']:.2f}"
+        return ko
+    return f"{ko} · 100만 토큰당 입력 ${m['in']:.2f} / 출력 ${m['out']:.2f}"
 
 
 # =====================================================================
@@ -841,9 +851,15 @@ def sidebar_ais(room, is_owner):
             label = st.text_input("부를 이름 (띄어쓰기 없이, 예: 클로드)", key="new_label", max_chars=12).strip()
             try:
                 models = load_models()
-                labels = [model_label(m) for m in models]
-                mk = st.selectbox("모델 (글자를 입력해 검색)", labels, key="new_model")
-                model_id = models[labels.index(mk)]["id"]
+                groups = {}
+                for m in models:
+                    groups.setdefault(model_group(m["id"]), []).append(m)
+                names = sorted(groups, key=lambda g: (GROUP_ORDER.index(g) if g in GROUP_ORDER else 99, g))
+                grp = st.selectbox("모델 종류 (클로드·제미나이 등)", names, key="new_group")
+                sub = groups[grp]
+                labels = [model_label(m) for m in sub]
+                mk = st.selectbox(f"{grp} 모델 선택 (글자를 입력해 검색)", labels, key=f"new_model_{grp}")
+                model_id = sub[labels.index(mk)]["id"]
             except Exception:
                 model_id = st.text_input("모델 ID (OpenRouter 모델 목록 조회 실패 — 직접 입력)", key="new_model_txt").strip()
             role = st.text_area("역할 (선택, 예: 공시 원문 요약 담당)", key="new_role", height=70)
