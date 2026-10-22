@@ -535,7 +535,7 @@ def model_label(m, grp=""):
         ko = ko[len(grp) + 1:]
     if m["in"] is None:
         return ko
-    return f"{ko} · 100만 토큰당 입력 ${m['in']:.2f} / 출력 ${m['out']:.2f}"
+    return f"{ko} · 입력 ${m['in']:.2f}/출력 ${m['out']:.2f}"
 
 
 # =====================================================================
@@ -860,7 +860,7 @@ def sidebar_ais(room, is_owner):
                 grp = st.selectbox("모델 종류 (클로드·제미나이 등)", names, key="new_group")
                 sub = groups[grp]
                 labels = [model_label(m, grp) for m in sub]
-                mk = st.selectbox(f"{grp} 모델 선택 (글자를 입력해 검색)", labels, key=f"new_model_{grp}")
+                mk = st.selectbox(f"{grp} 모델 선택 (100만 토큰당 비용)", labels, key=f"new_model_{grp}")
                 model_id = sub[labels.index(mk)]["id"]
             except Exception:
                 model_id = st.text_input("모델 ID (OpenRouter 모델 목록 조회 실패 — 직접 입력)", key="new_model_txt").strip()
