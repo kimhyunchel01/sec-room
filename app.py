@@ -19,6 +19,7 @@ import random
 import re
 import string
 import threading
+import unicodedata
 import uuid
 
 import pandas as pd
@@ -672,11 +673,12 @@ def screen_entry():
             if ok:
                 try:
                     mems = get_members(room["id"])
-                    mine = [m for m in mems if m["nickname"] == nick]
+                    nick = unicodedata.normalize("NFC", nick)
+                    mine = [m for m in mems if unicodedata.normalize("NFC", m["nickname"]).strip() == nick]
                     if not nick:
                         st.error("닉네임을 입력하십시오.")
                     elif mine:
-                        enter_room(room, nick)
+                        enter_room(room, mine[0]["nickname"])
                     elif room.get("join_hash") and room_join_hash(room["code"], pw) != room["join_hash"]:
                         st.error("입장 암호가 맞지 않습니다.")
                     elif len(mems) >= int(room["capacity"]):
