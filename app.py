@@ -630,11 +630,11 @@ def enter_room(room, nick):
     st.session_state["room_id"] = room["id"]
     st.session_state["nick"] = nick
     st.session_state.setdefault("sid", uuid.uuid4().hex)
-    try:
-        st.query_params["room"] = room["code"]
-    except Exception:
-        pass
     st.rerun()
+
+
+def room_join_hash(code, pw) -> str:
+    return hashlib.sha256(f"join:{code}:{pw}".encode()).hexdigest()
 
 
 def screen_entry():
@@ -642,40 +642,57 @@ def screen_entry():
     st.caption("사람 여러 명과 AI 여러 개가 미국 기업 공시를 놓고 대화하는 방입니다. AI는 @이름으로 부를 때만 답합니다.")
     if db.mem_mode:
         st.warning("체험 모드: 저장소(Supabase)가 연결되지 않아 서버가 재시작되면 대화가 사라집니다.")
-    tab_join, tab_new = st.tabs(["방 입장", "방 만들기"])
+    tab_join, tab_new = st.tabs(["방 목록", "방 만들기"])
 
     with tab_join:
-        with st.form("join"):
-            code = st.text_input("방 코드", value=st.query_params.get("room", "")).strip().upper()
-            nick = st.text_input("닉네임").strip()
-            pin = st.text_input("개인 숫자 4자리 (처음이면 새로 정하십시오)", type="password", max_chars=4)
-            ok = st.form_submit_button("입장")
-        if ok:
-            try:
-                rooms = db.select("rooms", [("code", "eq", code)])
-                if not rooms:
-                    st.error("방 코드를 찾을 수 없습니다.")
-                elif not nick or not re.fullmatch(r"\d{4}", pin or ""):
-                    st.error("닉네임과 숫자 4자리를 입력하십시오.")
-                else:
-                    room = rooms[0]
+        rooms, mem_count, ai_count = [], {}, {}
+        try:
+            rooms = db.select("rooms", order="id.desc", limit=50)
+            for m in db.select("members"):
+                mem_count[m["room_id"]] = mem_count.get(m["room_id"], 0) + 1
+            for a in db.select("ais"):
+                ai_count[a["room_id"]] = ai_count.get(a["room_id"], 0) + 1
+        except Exception as e:
+            st.error(str(e))
+        if not rooms:
+            st.info("아직 만들어진 방이 없습니다. '방 만들기' 탭에서 새 방을 만드십시오.")
+        else:
+            def room_label(r):
+                lock = "🔒" if r.get("join_hash") else "🔓"
+                return (f"{lock} {r['name']} · 방장 {r['creator']} · "
+                        f"{mem_count.get(r['id'], 0)}/{r['capacity']}명 · AI {ai_count.get(r['id'], 0)}개")
+
+            labels = [room_label(r) for r in rooms]
+            pick = st.selectbox("입장할 방 (🔒 = 입장 암호 필요)", labels)
+            room = rooms[labels.index(pick)]
+            with st.form("join"):
+                nick = st.text_input("닉네임").strip()
+                pin = st.text_input("개인 숫자 4자리 (처음이면 새로 정하십시오)", type="password", max_chars=4)
+                pw = st.text_input("입장 암호 (🔒 방에 처음 들어갈 때만)", type="password") if room.get("join_hash") else ""
+                ok = st.form_submit_button("입장")
+            if ok:
+                try:
                     mems = get_members(room["id"])
                     mine = [m for m in mems if m["nickname"] == nick]
-                    if mine:
+                    if not nick or not re.fullmatch(r"\d{4}", pin or ""):
+                        st.error("닉네임과 숫자 4자리를 입력하십시오.")
+                    elif mine:
                         if mine[0]["pin_hash"] == hash_pin(room["id"], nick, pin):
                             enter_room(room, nick)
                         else:
                             st.error("이미 사용 중인 닉네임이고 숫자가 맞지 않습니다.")
+                    elif room.get("join_hash") and room_join_hash(room["code"], pw) != room["join_hash"]:
+                        st.error("입장 암호가 맞지 않습니다.")
                     elif len(mems) >= int(room["capacity"]):
                         st.error(f"정원({room['capacity']}명)이 가득 찼습니다.")
                     else:
                         db.insert("members", {"room_id": room["id"], "nickname": nick, "pin_hash": hash_pin(room["id"], nick, pin)})
                         add_system_msg(room["id"], f"{nick}님이 입장했습니다.")
                         enter_room(room, nick)
-            except DupError:
-                st.error("이미 사용 중인 닉네임입니다.")
-            except Exception as e:
-                st.error(str(e))
+                except DupError:
+                    st.error("이미 사용 중인 닉네임입니다.")
+                except Exception as e:
+                    st.error(str(e))
 
     with tab_new:
         need_pw = get_secret("CREATE_PASSWORD")
@@ -684,6 +701,7 @@ def screen_entry():
             nick = st.text_input("내 닉네임(방장)").strip()
             pin = st.text_input("개인 숫자 4자리", type="password", max_chars=4)
             cap = st.slider("정원(최대 20명)", 2, 20, 10)
+            join_pw = st.text_input("입장 암호 (선택 — 비우면 누구나 입장할 수 있는 열린 방)", type="password")
             pw = st.text_input("방 만들기 암호", type="password") if need_pw else ""
             ok = st.form_submit_button("방 만들기")
         if ok:
@@ -693,20 +711,23 @@ def screen_entry():
                 st.error("방 이름, 닉네임, 숫자 4자리를 모두 입력하십시오.")
             else:
                 try:
+                    room = None
                     for _ in range(5):
+                        code = new_room_code()
                         try:
                             room = db.insert("rooms", {
-                                "code": new_room_code(), "name": name, "creator": nick, "capacity": cap,
+                                "code": code, "name": name, "creator": nick, "capacity": cap,
                                 "daily_limit": DEFAULT_ROOM_LIMIT, "filing": None, "filing_sent": False, "auto": None,
+                                "join_hash": room_join_hash(code, join_pw) if join_pw else None,
                             })
                             break
                         except DupError:
                             room = None
                     if not room:
-                        st.error("방 코드 생성에 실패했습니다. 다시 시도하십시오.")
+                        st.error("방 생성에 실패했습니다. 다시 시도하십시오.")
                     else:
                         db.insert("members", {"room_id": room["id"], "nickname": nick, "pin_hash": hash_pin(room["id"], nick, pin)})
-                        add_system_msg(room["id"], f"방이 만들어졌습니다. 방 코드: {room['code']}")
+                        add_system_msg(room["id"], "방이 만들어졌습니다.")
                         enter_room(room, nick)
                 except Exception as e:
                     st.error(str(e))
@@ -985,7 +1006,7 @@ def screen_room():
     stat = f"오늘 AI 호출 {n}/{room['daily_limit']}회 · 토큰 입력 {tin:,} / 출력 {tout:,}"
     if cost is not None:
         stat += f" · 비용 약 ${cost:.4f}"
-    st.caption(f"방 코드 **{room['code']}** · {nick}{' (방장)' if is_owner else ''} · {stat}")
+    st.caption(f"{'🔒' if room.get('join_hash') else '🔓'} {nick}{' (방장)' if is_owner else ''} · {stat}")
     if db.mem_mode:
         st.warning("체험 모드: 서버가 재시작되면 대화가 사라집니다.")
     for kind, text in st.session_state.pop("flash", []):
