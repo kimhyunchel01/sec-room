@@ -506,7 +506,7 @@ FAMILY_KO = [("claude", "클로드"), ("gemini", "제미나이"), ("gemma", "젬
 
 
 def model_ko_name(model_id: str) -> str:
-    """'anthropic/claude-sonnet-4.5' -> '클로드 sonnet 4.5 (앤트로픽)' 식의 한국어 표기."""
+    """'anthropic/claude-sonnet-4.5' -> '클로드 sonnet 4.5' 식의 한국어 표기."""
     prov, _, name = model_id.partition("/")
     if not name:
         prov, name = "", prov
@@ -516,8 +516,7 @@ def model_ko_name(model_id: str) -> str:
             name = ko + name[len(en):]
             break
     name = name.replace("-", " ").replace(":free", " 무료")
-    p = PROVIDER_KO.get(prov, prov)
-    return f"{name} ({p})" if p else name
+    return name
 
 
 def model_label(m):
