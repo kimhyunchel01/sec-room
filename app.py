@@ -497,10 +497,34 @@ def load_models():
     return sorted(out, key=lambda x: x["id"])
 
 
+PROVIDER_KO = {"anthropic": "앤트로픽", "google": "구글", "openai": "오픈AI", "meta-llama": "메타", "deepseek": "딥시크",
+               "qwen": "알리바바", "x-ai": "xAI", "mistralai": "미스트랄", "moonshotai": "문샷", "z-ai": "지푸",
+               "nvidia": "엔비디아", "microsoft": "마이크로소프트", "cohere": "코히어", "perplexity": "퍼플렉시티",
+               "amazon": "아마존", "minimax": "미니맥스"}
+FAMILY_KO = [("claude", "클로드"), ("gemini", "제미나이"), ("gemma", "젬마"), ("llama", "라마"), ("deepseek", "딥시크"),
+             ("qwen", "큐웬"), ("grok", "그록"), ("mistral", "미스트랄"), ("kimi", "키미"), ("glm", "GLM"), ("gpt", "GPT")]
+
+
+def model_ko_name(model_id: str) -> str:
+    """'anthropic/claude-sonnet-4.5' -> '클로드 sonnet 4.5 (앤트로픽)' 식의 한국어 표기."""
+    prov, _, name = model_id.partition("/")
+    if not name:
+        prov, name = "", prov
+    low = name.lower()
+    for en, ko in FAMILY_KO:
+        if low.startswith(en):
+            name = ko + name[len(en):]
+            break
+    name = name.replace("-", " ").replace(":free", " 무료")
+    p = PROVIDER_KO.get(prov, prov)
+    return f"{name} ({p})" if p else name
+
+
 def model_label(m):
+    ko = model_ko_name(m["id"])
     if m["in"] is None:
-        return m["id"]
-    return f"{m['id']}  (100만 토큰당 입력 ${m['in']:.2f} / 출력 ${m['out']:.2f})"
+        return f"{ko} · {m['id']}"
+    return f"{ko} · {m['id']} · 100만 토큰당 입력 ${m['in']:.2f} / 출력 ${m['out']:.2f}"
 
 
 # =====================================================================
@@ -800,7 +824,7 @@ def sidebar_ais(room, is_owner):
     ais = get_ais(room["id"])
     with st.sidebar.expander(f"🤖 AI 목록 ({len(ais)}개)", expanded=not ais):
         for ai in ais:
-            st.markdown(f"**@{ai['label']}** · `{ai['model']}`")
+            st.markdown(f"**@{ai['label']}** · {model_ko_name(ai['model'])}")
             if is_owner:
                 role = st.text_area("역할", value=ai.get("role") or "", key=f"role_{ai['id']}", height=70)
                 c1, c2 = st.columns(2)
