@@ -667,26 +667,22 @@ def screen_entry():
             room = rooms[labels.index(pick)]
             with st.form("join"):
                 nick = st.text_input("닉네임").strip()
-                pin = st.text_input("개인 숫자 4자리 (처음이면 새로 정하십시오)", type="password", max_chars=4)
                 pw = st.text_input("입장 암호 (🔒 방에 처음 들어갈 때만)", type="password") if room.get("join_hash") else ""
                 ok = st.form_submit_button("입장")
             if ok:
                 try:
                     mems = get_members(room["id"])
                     mine = [m for m in mems if m["nickname"] == nick]
-                    if not nick or not re.fullmatch(r"\d{4}", pin or ""):
-                        st.error("닉네임과 숫자 4자리를 입력하십시오.")
+                    if not nick:
+                        st.error("닉네임을 입력하십시오.")
                     elif mine:
-                        if mine[0]["pin_hash"] == hash_pin(room["id"], nick, pin):
-                            enter_room(room, nick)
-                        else:
-                            st.error("이미 사용 중인 닉네임이고 숫자가 맞지 않습니다.")
+                        enter_room(room, nick)
                     elif room.get("join_hash") and room_join_hash(room["code"], pw) != room["join_hash"]:
                         st.error("입장 암호가 맞지 않습니다.")
                     elif len(mems) >= int(room["capacity"]):
                         st.error(f"정원({room['capacity']}명)이 가득 찼습니다.")
                     else:
-                        db.insert("members", {"room_id": room["id"], "nickname": nick, "pin_hash": hash_pin(room["id"], nick, pin)})
+                        db.insert("members", {"room_id": room["id"], "nickname": nick, "pin_hash": ""})
                         add_system_msg(room["id"], f"{nick}님이 입장했습니다.")
                         enter_room(room, nick)
                 except DupError:
@@ -699,7 +695,6 @@ def screen_entry():
         with st.form("new"):
             name = st.text_input("방 이름").strip()
             nick = st.text_input("내 닉네임(방장)").strip()
-            pin = st.text_input("개인 숫자 4자리", type="password", max_chars=4)
             cap = st.slider("정원(최대 20명)", 2, 20, 10)
             join_pw = st.text_input("입장 암호 (선택 — 비우면 누구나 입장할 수 있는 열린 방)", type="password")
             pw = st.text_input("방 만들기 암호", type="password") if need_pw else ""
@@ -707,8 +702,8 @@ def screen_entry():
         if ok:
             if need_pw and pw != need_pw:
                 st.error("방 만들기 암호가 맞지 않습니다.")
-            elif not name or not nick or not re.fullmatch(r"\d{4}", pin or ""):
-                st.error("방 이름, 닉네임, 숫자 4자리를 모두 입력하십시오.")
+            elif not name or not nick:
+                st.error("방 이름과 닉네임을 입력하십시오.")
             else:
                 try:
                     room = None
@@ -726,7 +721,7 @@ def screen_entry():
                     if not room:
                         st.error("방 생성에 실패했습니다. 다시 시도하십시오.")
                     else:
-                        db.insert("members", {"room_id": room["id"], "nickname": nick, "pin_hash": hash_pin(room["id"], nick, pin)})
+                        db.insert("members", {"room_id": room["id"], "nickname": nick, "pin_hash": ""})
                         add_system_msg(room["id"], "방이 만들어졌습니다.")
                         enter_room(room, nick)
                 except Exception as e:
